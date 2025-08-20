@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: nginx
+spec:
+  serviceName: "nginx"
+  replicas: 3
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      volumes:
+        - name: html-volume
+          emptyDir: {}
+        - name: config-volume
+          configMap:
+            name: nginx-html
+      initContainers:
+        - name: init-html
+          image: busybox
+          command: ['sh', '-c', '
+            echo "Pod name: $HOSTNAME";
+            INDEX=$(echo $HOSTNAME | awk -F"-" "{print \$NF}");
+            echo "Using file: index-$INDEX.html";
+            cp /config/index-$INDEX.html /usr/share/nginx/html/index.html;
+          ']
+          env:
+            - name: HOSTNAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          volumeMounts:
+            - name: html-volume
+              mountPath: /usr/share/nginx/html
+            - name: config-volume
+              mountPath: /config
+      containers:
+        - name: nginx
+          image: nginx:latest
+          ports:
+            - containerPort: 80
+          volumeMounts:
+            - name: html-volume
+              mountPath: /usr/share/nginx/html

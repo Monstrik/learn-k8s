@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-deployment
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      volumes:
+        - name: html-volume
+          emptyDir: {}
+        - name: config-volume
+          configMap:
+            name: nginx-html
+      initContainers:
+        - name: init-html
+          image: busybox
+          command: ['sh', '-c', 'echo "Pod name: $HOSTNAME";FILE=$(ls /config | grep $(echo $HOSTNAME | grep -o "[a-z0-9]*$") || echo index-1.html); echo "Using file: $FILE"; cp /config/$FILE /usr/share/nginx/html/index.html;']
+          # command: ['sh', '-c', 'cp /config/index-$(echo $HOSTNAME | grep -o "[0-9]*").html /usr/share/nginx/html/index.html']
+          env:
+            - name: HOSTNAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          volumeMounts:
+            - name: html-volume
+              mountPath: /usr/share/nginx/html
+            - name: config-volume
+              mountPath: /config
+      containers:
+        - name: nginx
+          image: nginx:latest
+          ports:
+            - containerPort: 80
+          volumeMounts:
+            - name: html-volume
+              mountPath: /usr/share/nginx/html
