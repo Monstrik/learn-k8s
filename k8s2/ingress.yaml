@@ -5,6 +5,7 @@ metadata:
   annotations:
     # This annotation is important for the NGINX ingress controller
     nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
 spec:
   rules:
     - http:

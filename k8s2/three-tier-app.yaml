@@ -126,7 +126,8 @@ data:
         function testConnection() {
           document.getElementById('response').innerText = 'Loading...';
           // This fetch call goes to the Kubernetes Service name
-          fetch('http://backend-api-service')
+          // fetch('http://backend-api-service')
+          fetch('/api')
             .then(response => response.json())
             .then(data => {
               document.getElementById('response').innerText = JSON.stringify(data, null, 2);
