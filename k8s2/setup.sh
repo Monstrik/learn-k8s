@@ -1,0 +1,1 @@
+kubectl apply -f three-tier-app.yaml
