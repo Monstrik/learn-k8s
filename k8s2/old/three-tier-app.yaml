@@ -1,5 +1,5 @@
 # ===================================================================
-#  DATABASE TIER (PostgreSQL)
+#  SECRET for PostgreSQL Password
 # ===================================================================
 apiVersion: v1
 kind: Secret
@@ -7,19 +7,41 @@ metadata:
   name: postgres-secret
 type: Opaque
 stringData:
-  POSTGRES_PASSWORD: "mysecretpassword"
+  POSTGRES_PASSWORD: "mysecretpassword1"
+
 ---
+# ===================================================================
+#  PERSISTENT VOLUME CLAIM for PostgreSQL Data
+# ===================================================================
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce # This volume can be mounted as read-write by a single node
+  resources:
+    requests:
+      storage: 1Gi # Request 1 Gibibyte of storage
+
+---
+# ===================================================================
+#  DATABASE TIER (PostgreSQL)
+# ===================================================================
+# Service to expose PostgreSQL within the cluster
 apiVersion: v1
 kind: Service
 metadata:
-  name: postgres-service
+  name: postgres-service # The DNS name the backend will use to connect
 spec:
   selector:
     app: postgres
   ports:
     - port: 5432
       targetPort: 5432
+
 ---
+# StatefulSet to manage the PostgreSQL pod
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -57,6 +79,7 @@ spec:
         - name: postgres-secret-volume
           secret:
             secretName: postgres-secret
+  # The volume claim template provides the storage from our PVC
   volumeClaimTemplates:
     - metadata:
         name: postgres-storage
@@ -68,25 +91,28 @@ spec:
 
 ---
 # ===================================================================
-#  BACKEND API TIER (Echo Server)
+#  BACKEND API TIER
 # ===================================================================
+# Service to expose the Backend API to the Frontend
 apiVersion: v1
 kind: Service
 metadata:
-  name: backend-api-service
+  name: backend-api-service # The DNS name the frontend will use
 spec:
   selector:
     app: backend-api
   ports:
     - port: 80
-      targetPort: 8080 # <--- The echo server listens on port 8080
+      targetPort: 3000
+
 ---
+# Deployment for the Backend API
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: backend-api
 spec:
-  replicas: 2
+  replicas: 2 # Run 2 pods for availability
   selector:
     matchLabels:
       app: backend-api
@@ -97,61 +123,44 @@ spec:
     spec:
       containers:
         - name: backend-api
-          image: jmalloc/echo-server 
+          image: prakhar1989/todo-api:1.0 # A pre-built sample API image
           ports:
-            - containerPort: 8080
+            - containerPort: 3000
+          env:
+            - name: DATABASE_HOST
+              value: "postgres-service" # Connect to the DB using its Service name
+            - name: DATABASE_USER
+              value: "admin"
+            - name: DATABASE_NAME
+              value: "todos_db"
+            - name: DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret # Pull password from our Secret
+                  key: POSTGRES_PASSWORD
+
 ---
 # ===================================================================
-#  FRONTEND TIER (NGINX with custom HTML)
+#  FRONTEND TIER
 # ===================================================================
-apiVersion: v1
-kind: ConfigMap # a custom index.html file
-metadata:
-  name: frontend-html-config
-data:
-  index.html: |
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <title>K8s Connection Test</title>
-    </head>
-    <body>
-      <h1>Frontend to Backend Connection Test</h1>
-      <p>Click the button to send a request from this NGINX frontend to the backend echo-server.</p>
-      <button onclick="testConnection()">Test Connection</button>
-      <hr>
-      <h2>Backend Response:</h2>
-      <pre id="response"></pre>
-      <script>
-        function testConnection() {
-          document.getElementById('response').innerText = 'Loading...';
-          // This fetch call goes to the Kubernetes Service name
-          fetch('http://backend-api-service')
-            .then(response => response.json())
-            .then(data => {
-              document.getElementById('response').innerText = JSON.stringify(data, null, 2);
-            })
-            .catch(error => {
-              document.getElementById('response').innerText = 'Error: ' + error + '\n\nCould not connect to the backend. Check service name and network policies.';
-            });
-        }
-      </script>
-    </body>
-    </html>
----
+# Service to expose the Frontend to the outside world
 apiVersion: v1
 kind: Service
 metadata:
   name: frontend-service
 spec:
+  # Using NodePort for easy access in local environments like Minikube/Docker Desktop.
+  # For cloud providers, you would typically change this to LoadBalancer.
   type: NodePort
   selector:
     app: frontend
   ports:
     - port: 80
       targetPort: 80
-      nodePort: 30080
+      nodePort: 30080 # We can access the app on <NodeIP>:30080
+
 ---
+# Deployment for the Frontend UI
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -168,14 +177,11 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: nginx:alpine
+          image: prakhar1989/todo-frontend:1.0 # A pre-built sample UI
           ports:
             - containerPort: 80
-          volumeMounts:
-            - name: html-volume
-              mountPath: /usr/share/nginx/html/index.html
-              subPath: index.html # Important: specifies the file to mount
-      volumes: # Define the volume using our ConfigMap
-        - name: html-volume
-          configMap:
-            name: frontend-html-config
+          env:
+            # This sample app requires an env var to know where the API is.
+            # It will make requests to http://backend-api-service
+            - name: API_HOST
+              value: "backend-api-service"
