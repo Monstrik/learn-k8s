@@ -2,7 +2,8 @@
 #kubectl port-forward pod/nginx-deployment-86c57bc6b8-dh2hp 8080:80
 #kubectl port-forward pod/nginx-deployment-86c57bc6b8-wpxrt 8080:80
 
-kubectl port-forward service/nginx-service 8080:80
+#kubectl port-forward service/nginx-service 8080:80
+kubectl port-forward service/apache-service 8080:80
 
 
 #
